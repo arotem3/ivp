@@ -8,5 +8,6 @@
 #include "IVP/LSRK4.hpp"
 
 #include "IVP/ARK3E2.hpp"
+#include "IVP/ARK5E4.hpp"
 
 #endif

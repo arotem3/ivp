@@ -1,5 +1,5 @@
-#ifndef IVP_ARK3E2_HPP
-#define IVP_ARK3E2_HPP
+#ifndef IVP_ARK5E4_HPP
+#define IVP_ARK5E4_HPP
 
 #include <vector>
 #include <ranges>
@@ -9,23 +9,23 @@
 namespace ivp
 {
   /**
-   * @brief Implements the adaptive explicit Runge Kutta third order method with
-   * an embedded second order method of Bogacki and Shampine.
+   * @brief Implements the adaptive explicit Runge Kutta seven stage fifth order
+   * method with a fourth order embedded method of Dormand and Prince.
    *
    * @tparam Y scalar or vector type for y-variable. float, complex<...>,
    * vector<...>, array<...>, etc.
    */
   template <typename Y>
-  class ARK3E2;
+  class ARK5E4;
 
-  // specialization of ARK3E2 for scalar types.
+  // specialization of ARK5E4 for scalar types.
   template <numcepts::ScalarType Y>
-  class ARK3E2<Y>
+  class ARK5E4<Y>
   {
   public:
     using real = numcepts::precision_t<Y>;
 
-    inline explicit ARK3E2(ARKOpts<real> opts = {}) : opts{opts} {}
+    inline explicit ARK5E4(ARKOpts<real> opts = {}) : opts{opts} {}
 
     /**
      * @brief computes a single step fo the IVP y' = F(t, y)
@@ -48,48 +48,40 @@ namespace ivp
     bool step(real &dt, Func &&f, real &t, Y &y, Y &p) const
     {
       constexpr real min_factor = 0.2, max_factor = 2.0, safety = 0.9;
+      constexpr real a[6][6] = {
+          {0.20000000000000000000, 0, 0, 0, 0, 0},
+          {0.07500000000000000000, 0.2250000000000000000, 0, 0, 0, 0},
+          {0.97777777777777777778, -3.7333333333333333333, 3.5555555555555555556, 0, 0, 0},
+          {2.9525986892242036275, -11.595793324188385917, 9.8228928516994360616, -0.29080932784636488340, 0, 0},
+          {2.8462752525252525253, -10.757575757575757576, 8.9064227177434724605, 0.27840909090909090909, -0.27353130360205831904, 0},
+          {0.091145833333333333333, 0, 0.44923629829290206649, 0.65104166666666666667, -0.32237617924528301887, 0.13095238095238095238}};
+      constexpr real c[6] = {0.2, 0.3, 0.8, 8.0 / 9.0, 1, 1};
+      constexpr real b[7] = {0.0012326388888888888889, 0, -0.0042527702905061395627, 0.036979166666666666667, -0.050863797169811320755, 0.041904761904761904762, -0.025000000000000000000};
 
-      constexpr real c[] = {0.0, 0.5, 0.75, 1.0};
-      constexpr real b[] = {2.0 / 9.0, 1.0 / 3.0, 4.0 / 9.0, 0.0};
-      constexpr real bh[] = {-5.0 / 72.0, 1.0 / 12.0, 1.0 / 9.0, -1.0 / 8.0};
+      Y K[6];
 
-      const Y p0 = p;
       Y u;
       real s;
 
       bool reject = true;
       while (reject)
       {
-        // compute step
-        p = p0;
-        Y dy = b[0] * dt * p;
-        Y e = bh[0] * dt * p;
-
-        for (int stage : {1, 2})
+        Y e = dt * b[0] * p;
+        for (int stage = 0; stage < 6; ++stage)
         {
-          u = y + c[stage] * dt * p;
           s = t + c[stage] * dt;
-
-          p = f(s, u);
-
-          dy += b[stage] * dt * p;
-          e += bh[stage] * dt * p;
+          u = y + a[stage][0] * dt * p;
+          for (int j = 1; j <= stage; ++j)
+            u += a[stage][j] * dt * K[j - 1];
+          K[stage] = f(s, u);
+          e += dt * b[stage + 1] * K[stage];
         }
 
-        u = y + dy;
-        s = t + dt;
-
-        p = f(s, u);
-
-        e += bh[3] * dt * p;
-
-        // determine if error is admissible and update step size
-        const real R = opts.atol + std::max(std::abs(y), std::abs(y + dy)) * opts.rtol;
+        const real R = opts.atol + std::max(std::abs(y), std::abs(u)) * opts.rtol;
         const real err = std::abs(e / R);
 
         reject = err > 1;
-
-        const real scale = std::pow(err, real(-1.0 / 3.0));
+        const real scale = std::pow(err, real(-0.2));
         dt *= std::min(max_factor, std::max(min_factor, safety * scale));
 
         dt = std::min(dt, opts.max_dt);
@@ -99,22 +91,26 @@ namespace ivp
 
       t = s;
       y = u;
+      p = K[5];
       return true;
     }
 
   private:
-    const ARKOpts<real> opts;
+    ARKOpts<real> opts;
   };
 
-  // specialization of ARK3E2 for arrays (pointers) of scalar types.
+  // specialization of ARK5E4 for arrays (pointers) of scalar types.
   template <numcepts::ScalarType Y>
-  class ARK3E2<Y *>
+  class ARK5E4<Y *>
   {
   public:
     using real = numcepts::precision_t<Y>;
 
-    inline explicit ARK3E2(size_t dim, ARKOpts<real> opts = {})
-        : n{dim}, opts{opts}, p(dim), u(dim), dy(dim), e(dim) {}
+    inline explicit ARK5E4(size_t dim, ARKOpts<real> opts = {}) : n{dim}, opts{opts}, u(dim), e(dim)
+    {
+      for (int i = 0; i < 6; ++i)
+        K[i].resize(dim);
+    }
 
     /**
      * @brief computes a single step fo the IVP y' = F(t, y)
@@ -134,13 +130,18 @@ namespace ivp
      * size.
      */
     template <typename Func>
-    bool step(real &dt, Func &&f, real &t, Y *y, Y *p0) const
+    bool step(real &dt, Func &&f, real &t, Y *y, Y *p) const
     {
       constexpr real min_factor = 0.2, max_factor = 2.0, safety = 0.9;
-
-      constexpr real c[] = {0.0, 0.5, 0.75, 1.0};
-      constexpr real b[] = {2.0 / 9.0, 1.0 / 3.0, 4.0 / 9.0, 0.0};
-      constexpr real bh[] = {-5.0 / 72.0, 1.0 / 12.0, 1.0 / 9.0, -1.0 / 8.0};
+      constexpr real a[6][6] = {
+          {0.20000000000000000000, 0, 0, 0, 0, 0},
+          {0.07500000000000000000, 0.2250000000000000000, 0, 0, 0, 0},
+          {0.97777777777777777778, -3.7333333333333333333, 3.5555555555555555556, 0, 0, 0},
+          {2.9525986892242036275, -11.595793324188385917, 9.8228928516994360616, -0.29080932784636488340, 0, 0},
+          {2.8462752525252525253, -10.757575757575757576, 8.9064227177434724605, 0.27840909090909090909, -0.27353130360205831904, 0},
+          {0.091145833333333333333, 0, 0.44923629829290206649, 0.65104166666666666667, -0.32237617924528301887, 0.13095238095238095238}};
+      constexpr real c[6] = {0.2, 0.3, 0.8, 8.0 / 9.0, 1, 1};
+      constexpr real b[7] = {0.0012326388888888888889, 0, -0.0042527702905061395627, 0.036979166666666666667, -0.050863797169811320755, 0.041904761904761904762, -0.025000000000000000000};
 
       real s;
 
@@ -148,47 +149,34 @@ namespace ivp
       while (reject)
       {
         for (size_t i = 0; i < n; ++i)
-        {
-          p[i] = p0[i];
-          dy[i] = (b[0] * dt) * p[i];
-          e[i] = (bh[0] * dt) * p[i];
-        }
+          e[i] = (dt * b[0]) * p[i];
 
-        for (int stage : {1, 2})
+        for (int stage = 0; stage < 6; ++stage)
         {
           s = t + c[stage] * dt;
-
-          for (size_t i = 0; i < n; ++i)
-            u[i] = y[i] + (c[stage] * dt) * p[i];
-
-          f(p.data(), s, u.data());
-
           for (size_t i = 0; i < n; ++i)
           {
-            dy[i] += (b[stage] * dt) * p[i];
-            e[i] += (bh[stage] * dt) * p[i];
+            u[i] = y[i] + (a[stage][0] * dt) * p[i];
+            for (int j = 1; j <= stage; ++j)
+              u[i] += (a[stage][j] * dt) * K[j - 1][i];
           }
+
+          f(K[stage].data(), s, u.data());
+
+          for (size_t i = 0; i < n; ++i)
+            e[i] += (dt * b[stage + 1]) * K[stage][i];
         }
 
-        s = t + dt;
-        for (size_t i = 0; i < n; ++i)
-          u[i] = y[i] + dy[i];
-
-        f(p.data(), s, u.data());
-
-        real err = 0;
+        real err = 0.0;
         for (size_t i = 0; i < n; ++i)
         {
-          e[i] += (bh[3] * dt) * p[i];
-
           const real R = opts.atol + std::max(std::abs(y[i]), std::abs(u[i])) * opts.rtol;
           err += std::pow(std::abs(e[i]) / R, 2);
         }
         err = std::sqrt(err / n);
 
         reject = err > 1;
-
-        const real scale = std::pow(err, real(-1.0 / 3.0));
+        const real scale = std::pow(err, real(-0.2));
         dt *= std::min(max_factor, std::max(min_factor, safety * scale));
 
         dt = std::min(dt, opts.max_dt);
@@ -200,8 +188,9 @@ namespace ivp
       for (size_t i = 0; i < n; ++i)
       {
         y[i] = u[i];
-        p0[i] = p[i];
+        p[i] = K[5][i];
       }
+
       return true;
     }
 
@@ -210,24 +199,22 @@ namespace ivp
 
     const ARKOpts<real> opts;
 
-    mutable std::vector<Y> p;
     mutable std::vector<Y> u;
-    mutable std::vector<Y> dy;
     mutable std::vector<Y> e;
+    mutable std::vector<Y> K[6];
   };
 
-  // specialization of ARK3E2 for arrays (pointers) of scalar types.
   template <std::ranges::forward_range Y>
-  class ARK3E2<Y>
+  class ARK5E4<Y>
   {
   public:
     using real = numcepts::precision_t<Y>;
 
     template <typename... Args>
-    inline explicit ARK3E2(ARKOpts<real> opts = {}, Args &&...args)
-        : opts{opts}, p(args...), u(args...), dy(args...), e(args...)
+    inline explicit ARK5E4(ARKOpts<real> opts = {}, Args &&...args)
+        : opts{opts}, u(args...), e(args...), K{Y(args...), Y(args...), Y(args...), Y(args...), Y(args...), Y(args...)}
     {
-      n = std::distance(std::begin(p), std::end(p));
+      n = std::distance(std::begin(u), std::end(u));
     }
 
     /**
@@ -248,94 +235,80 @@ namespace ivp
      * size.
      */
     template <typename Func>
-    bool step(real &dt, Func &&f, real &t, Y &y, Y &p0) const
+    bool step(real &dt, Func &&f, real &t, Y &y, Y &p) const
     {
       constexpr real min_factor = 0.2, max_factor = 2.0, safety = 0.9;
-
-      constexpr real c[] = {0.0, 0.5, 0.75, 1.0};
-      constexpr real b[] = {2.0 / 9.0, 1.0 / 3.0, 4.0 / 9.0, 0.0};
-      constexpr real bh[] = {-5.0 / 72.0, 1.0 / 12.0, 1.0 / 9.0, -1.0 / 8.0};
+      constexpr real a[6][6] = {
+          {0.20000000000000000000, 0, 0, 0, 0, 0},
+          {0.07500000000000000000, 0.2250000000000000000, 0, 0, 0, 0},
+          {0.97777777777777777778, -3.7333333333333333333, 3.5555555555555555556, 0, 0, 0},
+          {2.9525986892242036275, -11.595793324188385917, 9.8228928516994360616, -0.29080932784636488340, 0, 0},
+          {2.8462752525252525253, -10.757575757575757576, 8.9064227177434724605, 0.27840909090909090909, -0.27353130360205831904, 0},
+          {0.091145833333333333333, 0, 0.44923629829290206649, 0.65104166666666666667, -0.32237617924528301887, 0.13095238095238095238}};
+      constexpr real c[6] = {0.2, 0.3, 0.8, 8.0 / 9.0, 1, 1};
+      constexpr real b[7] = {0.0012326388888888888889, 0, -0.0042527702905061395627, 0.036979166666666666667, -0.050863797169811320755, 0.041904761904761904762, -0.025000000000000000000};
 
       real s;
 
       bool reject = true;
+
       while (reject)
       {
-        auto p_iter = std::begin(p);
-        auto dy_iter = std::begin(dy);
         auto e_iter = std::begin(e);
-        for (auto p_value : p0)
+        for (auto p_value : p)
         {
-          *p_iter = p_value;
-          *dy_iter = (b[0] * dt) * p_value;
-          *e_iter = (bh[0] * dt) * p_value;
+          *e_iter = (dt * b[0]) * p_value;
 
-          ++p_iter;
-          ++dy_iter;
           ++e_iter;
         }
 
-        for (int stage : {1, 2})
+        for (int stage = 0; stage < 6; ++stage)
         {
           s = t + c[stage] * dt;
 
-          p_iter = std::begin(p);
           auto u_iter = std::begin(u);
+          auto p_iter = std::begin(p);
+          typename Y::iterator k_iter[] = {
+              std::begin(K[0]), std::begin(K[1]), std::begin(K[2]),
+              std::begin(K[3]), std::begin(K[4]), std::begin(K[5])};
           for (auto y_value : y)
           {
-            *u_iter = y_value + (c[stage] * dt) * (*p_iter);
+            *u_iter = y_value + (a[stage][0] * dt) * (*p_iter);
+            for (int j = 1; j <= stage; ++j)
+            {
+              *u_iter += (a[stage][j] * dt) * (*(k_iter[j - 1]));
+              k_iter[j - 1]++;
+            }
 
             ++u_iter;
             ++p_iter;
           }
 
-          f(p, s, u);
+          f(K[stage], s, u);
 
-          dy_iter = std::begin(dy);
           e_iter = std::begin(e);
-          for (auto p_value : p)
+          for (auto k_value : K[stage])
           {
-            *dy_iter += (b[stage] * dt) * p_value;
-            *e_iter += (bh[stage] * dt) * p_value;
+            *e_iter += (dt * b[stage + 1]) * k_value;
 
-            ++dy_iter;
             ++e_iter;
           }
         }
 
-        s = t + dt;
+        real err = 0.0;
         auto u_iter = std::begin(u);
-        dy_iter = std::begin(dy);
-        for (auto y_value : y)
-        {
-          *u_iter = y_value + (*dy_iter);
-
-          ++u_iter;
-          ++dy_iter;
-        }
-
-        f(p, s, u);
-
-        real err = 0;
         auto y_iter = std::begin(y);
-        u_iter = std::begin(u);
-        p_iter = std::begin(p);
-        for (auto &e_value : e)
+        for (auto e_value : e)
         {
-          e_value += (bh[3] * dt) * (*p_iter);
-
           const real R = opts.atol + std::max(std::abs(*y_iter), std::abs(*u_iter)) * opts.rtol;
           err += std::pow(std::abs(e_value) / R, 2);
 
-          ++y_iter;
           ++u_iter;
-          ++p_iter;
+          ++y_iter;
         }
-        err = std::sqrt(err / n);
 
         reject = err > 1;
-
-        const real scale = std::pow(err, real(-1.0 / 3.0));
+        const real scale = std::pow(err, real(-0.2));
         dt *= std::min(max_factor, std::max(min_factor, safety * scale));
 
         dt = std::min(dt, opts.max_dt);
@@ -344,18 +317,17 @@ namespace ivp
       }
 
       t = s;
-
       auto y_iter = std::begin(y);
-      auto p_iter = std::begin(p0);
       auto u_iter = std::begin(u);
-      for (auto p_value : p)
+      auto p_iter = std::begin(p);
+      for (auto k_value : K[5])
       {
         *y_iter = *u_iter;
-        *p_iter = p_value;
+        *p_iter = k_value;
 
         ++y_iter;
-        ++p_iter;
         ++u_iter;
+        ++p_iter;
       }
 
       return true;
@@ -366,10 +338,9 @@ namespace ivp
 
     const ARKOpts<real> opts;
 
-    mutable Y p;
     mutable Y u;
-    mutable Y dy;
     mutable Y e;
+    mutable Y K[6];
   };
 
 } // namespace ivp
