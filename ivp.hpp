@@ -7,4 +7,6 @@
 #include "IVP/SSPRK3.hpp"
 #include "IVP/LSRK4.hpp"
 
+#include "IVP/ARK3E2.hpp"
+
 #endif
