@@ -1,7 +1,7 @@
 #ifndef IVP_RK2_HPP
 #define IVP_RK2_HPP
 
-#include "../numcepts/numcepts.hpp"
+#include "numcepts/numcepts.hpp"
 #include <vector>
 
 namespace ivp

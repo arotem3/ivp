@@ -1,7 +1,7 @@
 #ifndef IVP_ARK_OPTS_HPP
 #define IVP_ARK_OPTS_HPP
 
-#include "../numcepts/numcepts.hpp"
+#include "numcepts/numcepts.hpp"
 #include <limits>
 
 namespace ivp

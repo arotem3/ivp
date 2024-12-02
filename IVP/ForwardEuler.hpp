@@ -1,7 +1,7 @@
 #ifndef IVP_FORWARD_EULER_HPP
 #define IVP_FORWARD_EULER_HPP
 
-#include "../numcepts/numcepts.hpp"
+#include "numcepts/numcepts.hpp"
 #include <vector>
 
 namespace ivp

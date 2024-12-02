@@ -3,7 +3,7 @@
 
 #include <vector>
 #include <ranges>
-#include "../numcepts/numcepts.hpp"
+#include "numcepts/numcepts.hpp"
 #include "ARKOpts.hpp"
 
 namespace ivp
