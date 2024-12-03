@@ -113,6 +113,8 @@ namespace ivp
 
       for (size_t i = 0; i < n; ++i)
         y[i] += dt * p[i];
+
+      t += dt;
     }
 
   private:
