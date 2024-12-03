@@ -1,10 +1,25 @@
 # `ivp.hpp`
 Small selection of generic one step methods for solving initial value problems:
+
 $$y'(t) = F(t,\, y(t)), \quad y(t_0) = y_0.$$
+
 Here $y : \mathbb{R} \to V$. Where $V$ is an $n$ dimensional vector field, i.e. $\mathbb{R}^n$ or $\mathbb{C}^n$.
 
+Examples can be found in the examples directory. All of which can be compiled with cmake:
+```
+cmake .
+make -j
+```
+The executables will also be in the examples directory.
+
+The library can be installed with cmake:
+```
+cmake .
+sudo make install
+```
+
 ## Explicit Methods
-These methods are typically used when the time step is fixed, or the time step is adapted according using, say, Richardson extrapolation. All of these methods requires `2n` storage (where `n` is the dimension of the system of ODEs).
+These methods are typically used when the time step is fixed, or the time step is adapted by using, say, Richardson extrapolation. All of these methods requires `2n` storage (where `n` is the dimension of the system of ODEs).
 
 * `ForwardEuler`: implements the first order [forward Euler method](https://en.wikipedia.org/wiki/Euler_method). Requires one function evaluation every step.
 * `RK2`: implments the [explicit midpoint method](https://en.wikipedia.org/wiki/Midpoint_method). Requires two function evaluations every step.
@@ -28,7 +43,7 @@ All of the methods specified have specializations for three abstract [(concept)]
   * As an example, `std::valarray<double>` will behave as expected with any of the explicit `ivp` methods by adding the declaration: `struct numcepts::is_real<std::valarray<double>> : std::true_type {};` Nevertheless, the implementation for `std::ranges::forward_range` may be more efficient for `std::valarray<double>` for larger `n`.
 * `numcepts::ScalarType[]`: this is an array whose elements are `numcepts::ScalarType`. The size of these arrays is passed to the constructor of the IVP solver and the solver allocates the needed work arrays using `std::vector`s.
 * `std::ranges::forward_range`: this is any container with `begin` and `end` and over which we can iterate several times. It is implicitly assumed that the elements of these ranges satsify the `numcepts::ScalarType` constraint so that all operations on these ranges is logical. Many `std` containers naturally satisfy this condition (and namely `std::vector`), so this implementation is the most generic for vector valued initial value problems. Since all of the methods requires some amount of extra storage, the IVP solver must be able to store the type and it must be initialized correctly on construction of the IVP solver.
-  * For example, if using an `std::vector<double>`, the size of the vector must be specified to the constructor of the IVP solver. The size is then passed to all of the work variables needed (e.g. 2 vectors are needed for `ForwardEuler` and 8 are needed for `ARK5E4`). If instead we are using `std::array<double, 5>` nothing needs to be passed to the constructor.
+  * For example, if using an `std::vector<double>`, the size of the vector must be specified to the constructor of the IVP solver. The size is then passed to all of the work variables needed (e.g. 2 vectors are needed for `ForwardEuler` and 8 are needed for `ARK5E4`, etc.). If instead we are using `std::array<double, 5>` nothing needs to be passed to the constructor.
 
 Additional constraints for $y$-types:
 
